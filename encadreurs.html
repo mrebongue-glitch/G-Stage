@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Gestion des Encadreurs</title>
+  <link rel="stylesheet" href="encadreurs.css" />
+  <script>fetch("api/check_auth.php",{credentials:"same-origin"}).then(function(r){if(!r.ok){sessionStorage.removeItem("user");window.location.replace("login.html");}});</script>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div>
+        <div class="brand">
+          <img src="images/logo.jpg" alt="Logo Douanes" class="brand-logo" />
+          <div>
+            <h2>Douanes du Cameroun</h2>
+            <p>Cellule Informatique</p>
+          </div>
+        </div>
+
+        <nav class="menu">
+          <a href="dashboard.html">Tableau de bord</a>
+          <a href="stagiaires.html">Stagiaires</a>
+          <a href="encadreurs.html" class="active">Encadreurs</a>
+          <a href="modules.html">Modules</a>
+          <a href="affectations.html">Affectations</a>
+          <a href="evaluations.html">Evaluations</a>
+          <a href="presence.html">Presences</a>
+          <a href="attestations.html">Attestations</a>
+        </nav>
+      </div>
+
+      <div class="menu footer-menu">
+        <a id="logoutBtn" href="#">Deconnexion</a>
+      </div>
+    </aside>
+
+    <main class="content">
+      <header class="topbar">
+        <div>
+          <h1>Gestion des Encadreurs</h1>
+          <p>Gerer les encadreurs de la cellule informatique</p>
+        </div>
+        <div class="top-actions">
+          <button id="inviteAllBtn" class="btn btn-light">Inviter tous</button>
+          <button id="newSupervisorBtn" class="btn btn-primary">Nouvel encadreur</button>
+        </div>
+      </header>
+
+      <section id="statsGrid" class="stats-grid"></section>
+
+      <section class="table-card">
+        <div class="table-head">
+          <h3>Liste des encadreurs</h3>
+          <span id="resultCount">0 encadreur(s)</span>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>NOM COMPLET</th>
+                <th>FONCTION</th>
+                <th>TELEPHONE</th>
+                <th>EMAIL</th>
+                <th>COMPTE</th>
+                <th>ACTIONS</th>
+              </tr>
+            </thead>
+            <tbody id="supervisorTableBody"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div id="detailsModal" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="modal-card">
+      <div class="modal-head">
+        <h4>Details encadreur</h4>
+        <button class="icon-btn" data-close-modal="detailsModal">x</button>
+      </div>
+      <div id="detailsContent" class="modal-body"></div>
+    </div>
+  </div>
+
+  <div id="editModal" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="modal-card">
+      <div class="modal-head">
+        <h4>Modifier encadreur</h4>
+        <button class="icon-btn" data-close-modal="editModal">x</button>
+      </div>
+      <form id="editForm" class="modal-body form-grid">
+        <input type="hidden" id="editId" />
+        <label>Nom complet
+          <input id="editName" required />
+        </label>
+        <label>Email
+          <input id="editEmail" type="email" required />
+        </label>
+        <label>Telephone
+          <input id="editPhone" required />
+        </label>
+        <label>Fonction
+          <input id="editRole" required />
+        </label>
+        <label>Compte
+          <select id="editAccount" required>
+            <option value="avec">Avec compte</option>
+            <option value="sans">Sans compte</option>
+          </select>
+        </label>
+        <div class="form-actions">
+          <button type="button" class="btn btn-light" data-close-modal="editModal">Annuler</button>
+          <button type="submit" class="btn btn-primary">Enregistrer</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div id="createModal" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="modal-card">
+      <div class="modal-head">
+        <h4>Nouvel encadreur</h4>
+        <button class="icon-btn" data-close-modal="createModal">x</button>
+      </div>
+      <form id="createForm" class="modal-body form-grid">
+        <label>Nom complet
+          <input id="createName" required />
+        </label>
+        <label>Email
+          <input id="createEmail" type="email" required />
+        </label>
+        <label>Telephone
+          <input id="createPhone" />
+        </label>
+        <label>Fonction
+          <input id="createRole" required />
+        </label>
+        <label>Compte
+          <select id="createAccount" required>
+            <option value="sans">Sans compte</option>
+            <option value="avec">Avec compte</option>
+          </select>
+        </label>
+        <label>Invitation
+          <select id="createInvited" required>
+            <option value="0">Non envoyee</option>
+            <option value="1">Envoyee</option>
+          </select>
+        </label>
+        <p id="createFormMessage" class="form-message hidden"></p>
+        <div class="form-actions">
+          <button type="button" class="btn btn-light" data-close-modal="createModal">Annuler</button>
+          <button id="createSubmitBtn" type="submit" class="btn btn-primary">Enregistrer</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="encadreurs.js"></script>
+  <script>document.addEventListener("DOMContentLoaded",function(){var b=document.getElementById("logoutBtn");if(b){b.addEventListener("click",function(e){e.preventDefault();fetch("api/logout.php",{credentials:"same-origin"}).finally(function(){sessionStorage.removeItem("user");window.location.replace("login.html");});});}});</script>
+</body>
+</html>

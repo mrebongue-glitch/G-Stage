@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tableau de bord - Douanes du Cameroun</title>
+  <link rel="stylesheet" href="dashboard.css" />
+  <script>fetch("api/check_auth.php",{credentials:"same-origin"}).then(function(r){if(!r.ok){sessionStorage.removeItem("user");window.location.replace("login.html");}});</script>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div>
+        <div class="brand">
+          <img src="images/logo.jpg" alt="Logo Douanes" class="brand-logo" />
+          <div>
+            <h2>Douanes du Cameroun</h2>
+            <p>Cellule Informatique</p>
+          </div>
+        </div>
+
+        <nav class="menu">
+          <a href="dashboard.html" class="active">Tableau de bord</a>
+          <a href="stagiaires.html">Stagiaires</a>
+          <a href="encadreurs.html">Encadreurs</a>
+          <a href="modules.html">Modules</a>
+          <a href="affectations.html">Affectations</a>
+          <a href="evaluations.html">Evaluations</a>
+          <a href="presence.html">Presences</a>
+          <a href="attestations.html">Attestations</a>
+        </nav>
+      </div>
+
+      <div class="menu footer-menu">
+        <a id="logoutBtn" href="#">Deconnexion</a>
+      </div>
+    </aside>
+
+    <main class="content">
+      <header class="topbar">
+        <div>
+          <h1 id="welcomeTitle">Bienvenue</h1>
+          <p>Tableau de bord de gestion des stagiaires - Cellule Informatique des Douanes</p>
+        </div>
+        <button class="export-btn" id="exportBtn">Exporter vers Google Sheets</button>
+      </header>
+
+      <section class="stats-grid" id="statsGrid"></section>
+
+      <section class="panels-grid">
+        <article class="panel">
+          <div class="panel-head">
+            <h3>Stagiaires recents</h3>
+            <span class="pill" id="recentTotal">0 total</span>
+          </div>
+          <div id="recentList" class="list"></div>
+        </article>
+
+        <article class="panel">
+          <div class="panel-head">
+            <h3>Dernieres affectations</h3>
+            <span class="pill" id="assignTotal">0 total</span>
+          </div>
+          <div id="assignList" class="list"></div>
+        </article>
+      </section>
+    </main>
+  </div>
+
+  <script src="dashboard.js"></script>
+  <script>document.addEventListener("DOMContentLoaded",function(){var b=document.getElementById("logoutBtn");if(b){b.addEventListener("click",function(e){e.preventDefault();fetch("api/logout.php",{credentials:"same-origin"}).finally(function(){sessionStorage.removeItem("user");window.location.replace("login.html");});});}});</script>
+</body>
+</html>

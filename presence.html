@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Suivi des presences</title>
+  <link rel="stylesheet" href="presence.css" />
+  <script>fetch("api/check_auth.php",{credentials:"same-origin"}).then(function(r){if(!r.ok){sessionStorage.removeItem("user");window.location.replace("login.html");}});</script>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div>
+        <div class="brand">
+          <img src="images/logo.jpg" alt="Logo Douanes" class="brand-logo" />
+          <div>
+            <h2>Douanes du Cameroun</h2>
+            <p>Cellule Informatique</p>
+          </div>
+        </div>
+
+        <nav class="menu">
+          <a href="dashboard.html">Tableau de bord</a>
+          <a href="stagiaires.html">Stagiaires</a>
+          <a href="encadreurs.html">Encadreurs</a>
+          <a href="modules.html">Modules</a>
+          <a href="affectations.html">Affectations</a>
+          <a href="evaluations.html">Evaluations</a>
+          <a href="presence.html" class="active">Presences</a>
+          <a href="attestations.html">Attestations</a>
+        </nav>
+      </div>
+
+      <div class="menu footer-menu">
+        <a id="logoutBtn" href="#">Deconnexion</a>
+      </div>
+    </aside>
+
+    <main class="content">
+      <header class="topbar">
+        <div>
+          <h1>Suivi des presences</h1>
+          <p>Validation quotidienne de l'assiduite des stagiaires</p>
+        </div>
+        <div class="top-actions">
+          <button class="btn btn-light" id="reportBtn">Rapport mensuel</button>
+          <button class="btn btn-primary" id="allPresentBtn">Tous presents</button>
+        </div>
+      </header>
+
+      <section class="date-row">
+        <button class="btn-nav" id="prevDay" aria-label="Jour precedent">&#8249;</button>
+        <input type="date" id="presenceDate" />
+        <button class="btn-nav" id="nextDay" aria-label="Jour suivant">&#8250;</button>
+        <span id="readableDate" class="readable-date"></span>
+      </section>
+
+      <section class="stats-grid" id="statsGrid"></section>
+
+      <section class="table-card">
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>STAGIAIRE</th>
+                <th>ETABLISSEMENT</th>
+                <th>STATUT</th>
+                <th>MOTIF</th>
+              </tr>
+            </thead>
+            <tbody id="presenceTableBody"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="presence.js"></script>
+  <script>document.addEventListener("DOMContentLoaded",function(){var b=document.getElementById("logoutBtn");if(b){b.addEventListener("click",function(e){e.preventDefault();fetch("api/logout.php",{credentials:"same-origin"}).finally(function(){sessionStorage.removeItem("user");window.location.replace("login.html");});});}});</script>
+</body>
+</html>

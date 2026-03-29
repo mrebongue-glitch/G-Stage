@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>G-Stage - Connexion</title>
+  <link rel="stylesheet" href="login.css" />
+</head>
+<body>
+  <main class="layout">
+    <section class="panel left">
+      <div class="bg-photo" aria-hidden="true"></div>
+      <div class="branding">
+        <h1 class="highlight-title">Accueil</h1>
+        <h2>Service des Douanes Camerounaises</h2>
+      </div>
+    </section>
+
+    <section class="panel right">
+      <div class="card">
+        <h2>Bienvenue sur G-Stage !</h2>
+        <p>Veuillez vous connecter pour continuer.</p>
+
+        <form id="loginForm" autocomplete="off">
+          <label for="username">Identifiant</label>
+          <input id="username" name="username" type="text" required />
+
+          <label for="password">Mot de passe</label>
+          <div class="password-wrapper">
+            <input id="password" name="password" type="password" required minlength="6" />
+            <button type="button" id="togglePwd" aria-label="Afficher le mot de passe">🔒</button>
+          </div>
+
+          <button type="submit" id="submitBtn" class="btn primary">
+            <span id="btnText">Se connecter</span>
+            <span id="btnSpinner" class="spinner hidden"></span>
+          </button>
+
+          <div class="separator">
+            <span><a href="#">Mot de passe oublié ?</a></span>
+          </div>
+        </form>
+
+        <p id="message" class="message"></p>
+      </div>
+    </section>
+  </main>
+
+  <script src="login.js"></script>
+</body>
+</html>

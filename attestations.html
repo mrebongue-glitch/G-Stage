@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Attestations de fin de stage</title>
+  <link rel="stylesheet" href="attestations.css" />
+  <script>fetch("api/check_auth.php",{credentials:"same-origin"}).then(function(r){if(!r.ok){sessionStorage.removeItem("user");window.location.replace("login.html");}});</script>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div>
+        <div class="brand">
+          <img src="images/logo.jpg" alt="Logo Douanes" class="brand-logo" />
+          <div>
+            <h2>Douanes du Cameroun</h2>
+            <p>Cellule Informatique</p>
+          </div>
+        </div>
+
+        <nav class="menu">
+          <a href="dashboard.html">Tableau de bord</a>
+          <a href="stagiaires.html">Stagiaires</a>
+          <a href="encadreurs.html">Encadreurs</a>
+          <a href="modules.html">Modules</a>
+          <a href="affectations.html">Affectations</a>
+          <a href="evaluations.html">Evaluations</a>
+          <a href="presence.html">Presences</a>
+          <a href="attestations.html" class="active">Attestations</a>
+        </nav>
+      </div>
+
+      <div class="menu footer-menu">
+        <a id="logoutBtn" href="#">Deconnexion</a>
+      </div>
+    </aside>
+
+    <main class="content">
+      <header class="topbar">
+        <div>
+          <h1>Attestations de fin de stage</h1>
+          <p>Generer et imprimer les attestations</p>
+        </div>
+        <button id="printBtn" class="btn btn-primary hidden" onclick="printAttestation()">
+          Imprimer l'attestation
+        </button>
+      </header>
+
+      <!-- Selector card -->
+      <section class="selector-card">
+        <label class="selector-label">Selectionner un stagiaire</label>
+        <select id="stagiaireSelect" class="selector-select">
+          <option value="">Choisir un stagiaire</option>
+        </select>
+      </section>
+
+      <!-- Placeholder -->
+      <section id="placeholder" class="placeholder-card">
+        <div class="placeholder-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+            <rect x="12" y="4" width="40" height="56" rx="4" fill="#e2e8f0"/>
+            <rect x="20" y="16" width="24" height="3" rx="1.5" fill="#cbd5e1"/>
+            <rect x="20" y="24" width="24" height="3" rx="1.5" fill="#cbd5e1"/>
+            <rect x="20" y="32" width="16" height="3" rx="1.5" fill="#cbd5e1"/>
+            <rect x="20" y="40" width="20" height="3" rx="1.5" fill="#cbd5e1"/>
+          </svg>
+        </div>
+        <p>Selectionnez un stagiaire pour generer son attestation</p>
+      </section>
+
+      <!-- Attestation preview -->
+      <section id="attestationPreview" class="hidden">
+        <div id="attestationDoc" class="attestation-doc">
+
+          <!-- En-tête République -->
+          <div class="attest-header">
+            <div class="attest-header-col">
+              <p class="republic">REPUBLIQUE DU CAMEROUN</p>
+              <p class="republic-sub">Paix &ndash; Travail &ndash; Patrie</p>
+              <p class="ministry">MINISTERE DES FINANCES</p>
+              <p class="ministry-sub">Direction Generale des Douanes</p>
+            </div>
+            <div class="attest-logo-col">
+              <img src="images/logo.jpg" alt="Armoiries" class="attest-logo" />
+            </div>
+            <div class="attest-header-col right">
+              <p class="republic">REPUBLIC OF CAMEROON</p>
+              <p class="republic-sub">Peace &ndash; Work &ndash; Fatherland</p>
+              <p class="ministry">MINISTRY OF FINANCE</p>
+              <p class="ministry-sub">General Directorate of Customs</p>
+            </div>
+          </div>
+
+          <hr class="attest-rule" />
+
+          <div class="attest-service">
+            <p>Cellule Informatique</p>
+            <p id="attest-ref">Ref. : CI/<span id="refYear"></span>/<span id="refNum"></span></p>
+          </div>
+
+          <h2 class="attest-title">ATTESTATION DE FIN DE STAGE</h2>
+
+          <div class="attest-body">
+            <p>
+              Le Directeur de la Cellule Informatique de la Direction Generale des Douanes du Cameroun
+              soussigne atteste que&nbsp;:
+            </p>
+
+            <div class="attest-identity">
+              <div class="attest-row">
+                <span class="attest-lbl">Nom et Prenoms</span>
+                <span class="attest-val" id="aName"></span>
+              </div>
+              <div class="attest-row">
+                <span class="attest-lbl">Etablissement</span>
+                <span class="attest-val" id="aSchool"></span>
+              </div>
+              <div class="attest-row">
+                <span class="attest-lbl">Filiere / Specialite</span>
+                <span class="attest-val" id="aField"></span>
+              </div>
+              <div class="attest-row">
+                <span class="attest-lbl">Niveau</span>
+                <span class="attest-val" id="aLevel"></span>
+              </div>
+              <div class="attest-row">
+                <span class="attest-lbl">Periode de stage</span>
+                <span class="attest-val" id="aPeriod"></span>
+              </div>
+              <div class="attest-row">
+                <span class="attest-lbl">Duree</span>
+                <span class="attest-val" id="aDuration"></span>
+              </div>
+            </div>
+
+            <p class="attest-mention">
+              a effectue son stage academique au sein de la <strong>Cellule Informatique de la
+              Direction Generale des Douanes du Cameroun</strong> durant la periode
+              susmentionnee, et s'est acquitte(e) de sa mission avec
+              <strong id="aMention"></strong>.
+            </p>
+
+            <p>
+              En foi de quoi, la presente attestation lui est delivree pour servir et valoir ce que de droit.
+            </p>
+          </div>
+
+          <div class="attest-footer">
+            <p class="attest-city">Yaounde, le <span id="aDate"></span></p>
+            <div class="attest-sign-block">
+              <p class="sign-title">Le Directeur de la Cellule Informatique</p>
+              <div class="sign-space"></div>
+              <p class="sign-name">Signature &amp; Cachet</p>
+            </div>
+          </div>
+
+        </div><!-- /.attestation-doc -->
+      </section>
+
+    </main>
+  </div>
+
+  <script src="attestations.js"></script>
+  <script>document.addEventListener("DOMContentLoaded",function(){var b=document.getElementById("logoutBtn");if(b){b.addEventListener("click",function(e){e.preventDefault();fetch("api/logout.php",{credentials:"same-origin"}).finally(function(){sessionStorage.removeItem("user");window.location.replace("login.html");});});}});</script>
+</body>
+</html>

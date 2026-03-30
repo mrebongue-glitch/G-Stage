@@ -82,22 +82,27 @@ try {
                 (SELECT COUNT(DISTINCT a.stagiaire_id)
                    FROM affectations a
                    INNER JOIN stagiaires s ON s.id = a.stagiaire_id
-                  WHERE a.encadreur_id = :encadreur_id
+                  WHERE a.encadreur_id = :encadreur_id_stagiaires
                     AND s.statut = 'actif') AS stagiaires_actifs,
                 (SELECT COUNT(*)
                    FROM evaluations e
                    INNER JOIN affectations a ON a.id = e.affectation_id
-                  WHERE a.encadreur_id = :encadreur_id) AS total_evaluations,
-                (SELECT COUNT(*)
+                  WHERE a.encadreur_id = :encadreur_id_evaluations) AS total_evaluations,
+                (SELECT COUNT(DISTINCT t.id)
                    FROM attestations t
                    INNER JOIN affectations a ON a.stagiaire_id = t.stagiaire_id
-                  WHERE a.encadreur_id = :encadreur_id) AS total_attestations,
+                  WHERE a.encadreur_id = :encadreur_id_attestations) AS total_attestations,
                 (SELECT COUNT(*)
                    FROM affectations
-                  WHERE encadreur_id = :encadreur_id
+                  WHERE encadreur_id = :encadreur_id_affectations
                     AND statut = 'en-cours') AS affectations_en_cours"
         );
-        $statsStmt->execute([':encadreur_id' => $supervisorId]);
+        $statsStmt->execute([
+            ':encadreur_id_stagiaires' => $supervisorId,
+            ':encadreur_id_evaluations' => $supervisorId,
+            ':encadreur_id_attestations' => $supervisorId,
+            ':encadreur_id_affectations' => $supervisorId,
+        ]);
         $stats = $statsStmt->fetch() ?: [];
 
         $recentStmt = $pdo->prepare(

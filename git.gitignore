@@ -1,0 +1,37 @@
+# Fichiers système macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Logs et caches
+*.log
+*.cache
+*.tmp
+
+# Configurations locales MAMP
+/Applications/MAMP/conf/
+/Applications/MAMP/logs/
+/Applications/MAMP/tmp/
+
+# Sessions PHP
+php_sessions/
+
+# Sauvegardes et fichiers temporaires
+*.bak
+*.swp
+*.swo
+
+# Vendor (si tu utilises Composer)
+vendor/
+
+# Node modules (si tu utilises npm/yarn)
+node_modules/
+
+# Environnements
+.env
+.env.local
+.env.*.local
+
+# Base de données exportées
+*.sql
+*.sql.gz

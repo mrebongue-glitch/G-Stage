@@ -140,7 +140,7 @@ async function loadEvaluations() {
     console.error(error);
     tableBody.innerHTML = `
       <tr>
-        <td class="empty-row" colspan="7">Impossible de charger les evaluations</td>
+        <td class="empty-row" colspan="7">${escapeHtml(error.message || "Impossible de charger les evaluations")}</td>
       </tr>
     `;
   }

@@ -140,9 +140,14 @@ CREATE TABLE IF NOT EXISTS utilisateurs (
   identifiant  VARCHAR(80)   NOT NULL UNIQUE,
   mot_de_passe VARCHAR(255)  NOT NULL COMMENT 'Hash bcrypt via password_hash()',
   role         ENUM('admin','encadreur') NOT NULL DEFAULT 'encadreur',
+  encadreur_id INT           DEFAULT NULL,
   actif        TINYINT(1)    NOT NULL DEFAULT 1,
   created_at   TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  PRIMARY KEY (id)
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_utilisateurs_encadreur (encadreur_id),
+  CONSTRAINT fk_utilisateurs_encadreur
+    FOREIGN KEY (encadreur_id) REFERENCES encadreurs (id)
+    ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB;
 
 -- Administrateur par défaut

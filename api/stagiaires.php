@@ -24,13 +24,27 @@ function normalizeRow(array $row): array
 
 try {
     $pdo = getDB();
+    $user = currentUserFromSession();
+    $isAdmin = ($user['role'] ?? '') === 'admin';
+    $supervisorId = $isAdmin ? null : getCurrentSupervisorId($pdo);
 
     if ($_SERVER['REQUEST_METHOD'] === 'GET') {
-        $stmt = $pdo->query(
-            "SELECT id, nom, email, etablissement, filiere, niveau, date_debut, date_fin, statut
-               FROM stagiaires
-              ORDER BY created_at DESC, id DESC"
-        );
+        if ($isAdmin) {
+            $stmt = $pdo->query(
+                "SELECT id, nom, email, etablissement, filiere, niveau, date_debut, date_fin, statut
+                   FROM stagiaires
+                  ORDER BY created_at DESC, id DESC"
+            );
+        } else {
+            $stmt = $pdo->prepare(
+                "SELECT DISTINCT s.id, s.nom, s.email, s.etablissement, s.filiere, s.niveau, s.date_debut, s.date_fin, s.statut, s.created_at
+                   FROM stagiaires s
+                   INNER JOIN affectations a ON a.stagiaire_id = s.id
+                  WHERE a.encadreur_id = :encadreur_id
+                  ORDER BY s.created_at DESC, s.id DESC"
+            );
+            $stmt->execute([':encadreur_id' => $supervisorId]);
+        }
 
         jsonResponse([
             'success' => true,
@@ -40,6 +54,13 @@ try {
 
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
         jsonResponse(['success' => false, 'message' => 'Méthode non autorisée'], 405);
+    }
+
+    if (!$isAdmin) {
+        jsonResponse([
+            'success' => false,
+            'message' => 'Désolé, cette action nécessite des privilèges d’Administrateur. Je ne peux pas modifier les accès système.'
+        ], 403);
     }
 
     $body = readJsonBody();

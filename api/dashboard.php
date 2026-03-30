@@ -46,21 +46,84 @@ function assignmentStatusLabel(string $status): string
 
 try {
     $pdo = getDB();
+    $user = currentUserFromSession();
+    $isAdmin = ($user['role'] ?? '') === 'admin';
 
-    $stats = $pdo->query(
-        "SELECT
-            (SELECT COUNT(*) FROM stagiaires WHERE statut = 'actif') AS stagiaires_actifs,
-            (SELECT COUNT(*) FROM encadreurs) AS total_encadreurs,
-            (SELECT COUNT(*) FROM modules) AS total_modules,
-            (SELECT COUNT(*) FROM affectations WHERE statut = 'en-cours') AS affectations_en_cours"
-    )->fetch() ?: [];
+    if ($isAdmin) {
+        $stats = $pdo->query(
+            "SELECT
+                (SELECT COUNT(*) FROM stagiaires WHERE statut = 'actif') AS stagiaires_actifs,
+                (SELECT COUNT(*) FROM encadreurs) AS total_encadreurs,
+                (SELECT COUNT(*) FROM modules) AS total_modules,
+                (SELECT COUNT(*) FROM affectations WHERE statut = 'en-cours') AS affectations_en_cours"
+        )->fetch() ?: [];
 
-    $recentStmt = $pdo->query(
-        "SELECT nom, etablissement, filiere, statut
-           FROM stagiaires
-          ORDER BY created_at DESC, id DESC
-          LIMIT 5"
-    );
+        $recentStmt = $pdo->query(
+            "SELECT nom, etablissement, filiere, statut
+               FROM stagiaires
+              ORDER BY created_at DESC, id DESC
+              LIMIT 5"
+        );
+        $recentRows = $recentStmt->fetchAll();
+
+        $assignmentStmt = $pdo->query(
+            "SELECT s.nom AS stagiaire_nom, m.titre AS module_titre, a.statut
+               FROM affectations a
+               INNER JOIN stagiaires s ON s.id = a.stagiaire_id
+               INNER JOIN modules m ON m.id = a.module_id
+              ORDER BY a.date_affectation DESC, a.id DESC
+              LIMIT 5"
+        );
+        $assignmentRows = $assignmentStmt->fetchAll();
+    } else {
+        $supervisorId = getCurrentSupervisorId($pdo);
+        $statsStmt = $pdo->prepare(
+            "SELECT
+                (SELECT COUNT(DISTINCT a.stagiaire_id)
+                   FROM affectations a
+                   INNER JOIN stagiaires s ON s.id = a.stagiaire_id
+                  WHERE a.encadreur_id = :encadreur_id
+                    AND s.statut = 'actif') AS stagiaires_actifs,
+                (SELECT COUNT(*)
+                   FROM evaluations e
+                   INNER JOIN affectations a ON a.id = e.affectation_id
+                  WHERE a.encadreur_id = :encadreur_id) AS total_evaluations,
+                (SELECT COUNT(*)
+                   FROM attestations t
+                   INNER JOIN affectations a ON a.stagiaire_id = t.stagiaire_id
+                  WHERE a.encadreur_id = :encadreur_id) AS total_attestations,
+                (SELECT COUNT(*)
+                   FROM affectations
+                  WHERE encadreur_id = :encadreur_id
+                    AND statut = 'en-cours') AS affectations_en_cours"
+        );
+        $statsStmt->execute([':encadreur_id' => $supervisorId]);
+        $stats = $statsStmt->fetch() ?: [];
+
+        $recentStmt = $pdo->prepare(
+            "SELECT DISTINCT s.nom, s.etablissement, s.filiere, s.statut, s.created_at, s.id
+               FROM stagiaires s
+               INNER JOIN affectations a ON a.stagiaire_id = s.id
+              WHERE a.encadreur_id = :encadreur_id
+              ORDER BY s.created_at DESC, s.id DESC
+              LIMIT 5"
+        );
+        $recentStmt->execute([':encadreur_id' => $supervisorId]);
+        $recentRows = $recentStmt->fetchAll();
+
+        $assignmentStmt = $pdo->prepare(
+            "SELECT s.nom AS stagiaire_nom, m.titre AS module_titre, a.statut
+               FROM affectations a
+               INNER JOIN stagiaires s ON s.id = a.stagiaire_id
+               INNER JOIN modules m ON m.id = a.module_id
+              WHERE a.encadreur_id = :encadreur_id
+              ORDER BY a.date_affectation DESC, a.id DESC
+              LIMIT 5"
+        );
+        $assignmentStmt->execute([':encadreur_id' => $supervisorId]);
+        $assignmentRows = $assignmentStmt->fetchAll();
+    }
+
     $recentTrainees = array_map(
         static function (array $row): array {
             return [
@@ -71,17 +134,9 @@ try {
                 'statusLabel' => traineeStatusLabel($row['statut']),
             ];
         },
-        $recentStmt->fetchAll()
+        $recentRows
     );
 
-    $assignmentStmt = $pdo->query(
-        "SELECT s.nom AS stagiaire_nom, m.titre AS module_titre, a.statut
-           FROM affectations a
-           INNER JOIN stagiaires s ON s.id = a.stagiaire_id
-           INNER JOIN modules m ON m.id = a.module_id
-          ORDER BY a.date_affectation DESC, a.id DESC
-          LIMIT 5"
-    );
     $assignments = array_map(
         static function (array $row): array {
             return [
@@ -91,15 +146,15 @@ try {
                 'statusLabel' => assignmentStatusLabel($row['statut']),
             ];
         },
-        $assignmentStmt->fetchAll()
+        $assignmentRows
     );
 
     jsonResponse([
         'success' => true,
         'stats' => [
             ['label' => 'Stagiaires actifs', 'value' => (int) ($stats['stagiaires_actifs'] ?? 0)],
-            ['label' => 'Encadreurs', 'value' => (int) ($stats['total_encadreurs'] ?? 0)],
-            ['label' => 'Modules', 'value' => (int) ($stats['total_modules'] ?? 0)],
+            ['label' => $isAdmin ? 'Encadreurs' : 'Evaluations', 'value' => (int) ($isAdmin ? ($stats['total_encadreurs'] ?? 0) : ($stats['total_evaluations'] ?? 0))],
+            ['label' => $isAdmin ? 'Modules' : 'Attestations', 'value' => (int) ($isAdmin ? ($stats['total_modules'] ?? 0) : ($stats['total_attestations'] ?? 0))],
             ['label' => 'Affectations en cours', 'value' => (int) ($stats['affectations_en_cours'] ?? 0)],
         ],
         'recentTrainees' => $recentTrainees,

@@ -1,6 +1,17 @@
 let trainees = [];
 let query = "";
 
+function getCurrentUser() {
+  try {
+    return JSON.parse(sessionStorage.getItem("user") || "null");
+  } catch (error) {
+    return null;
+  }
+}
+
+let currentUser = getCurrentUser();
+let isAdminUser = currentUser?.role === "admin";
+
 const statsGrid = document.getElementById("statsGrid");
 const searchInput = document.getElementById("searchInput");
 const tableBody = document.getElementById("traineeTableBody");
@@ -113,10 +124,10 @@ function renderTable() {
           <button class="menu-btn" data-action="toggle-menu">...</button>
           <div class="row-actions" role="menu">
             <button data-action="details">Voir details</button>
-            <button data-action="edit">Modifier</button>
-            <button data-action="mark-active">Marquer Actif</button>
-            <button data-action="mark-abandon">Marquer Abandonne</button>
-            <button data-action="delete" class="danger">Supprimer</button>
+            ${isAdminUser ? '<button data-action="edit">Modifier</button>' : ""}
+            ${isAdminUser ? '<button data-action="mark-active">Marquer Actif</button>' : ""}
+            ${isAdminUser ? '<button data-action="mark-abandon">Marquer Abandonne</button>' : ""}
+            ${isAdminUser ? '<button data-action="delete" class="danger">Supprimer</button>' : ""}
           </div>
         </td>
       </tr>
@@ -167,6 +178,7 @@ function openEdit(row) {
 
 function updateFromEditForm(evt) {
   evt.preventDefault();
+  if (!isAdminUser) return;
   const id = Number(document.getElementById("editId").value);
   const row = getRowById(id);
   if (!row) return;
@@ -185,6 +197,7 @@ function updateFromEditForm(evt) {
 }
 
 function setStatus(id, status) {
+  if (!isAdminUser) return;
   const row = getRowById(id);
   if (!row) return;
   row.status = status;
@@ -192,6 +205,7 @@ function setStatus(id, status) {
 }
 
 function removeTrainee(id) {
+  if (!isAdminUser) return;
   const idx = trainees.findIndex((t) => t.id === id);
   if (idx === -1) return;
   const ok = window.confirm("Confirmer la suppression de ce stagiaire ?");
@@ -225,13 +239,9 @@ async function loadTrainees() {
     return;
   }
 
-  if (!res.ok) {
-    throw new Error(`HTTP ${res.status}`);
-  }
-
   const data = await res.json();
-  if (!data.success) {
-    throw new Error(data.message || "Chargement impossible");
+  if (!res.ok || !data.success) {
+    throw new Error(data.message || `HTTP ${res.status}`);
   }
 
   trainees = Array.isArray(data.stagiaires) ? data.stagiaires : [];
@@ -240,6 +250,7 @@ async function loadTrainees() {
 
 async function submitCreateForm(evt) {
   evt.preventDefault();
+  if (!isAdminUser) return;
 
   const payload = {
     name: document.getElementById("createName").value.trim(),
@@ -340,6 +351,22 @@ function rerender() {
   renderTable();
 }
 
+function applyRoleUiState() {
+  const newTraineeBtn = document.getElementById("newTraineeBtn");
+  if (newTraineeBtn) {
+    newTraineeBtn.style.display = isAdminUser ? "" : "none";
+  }
+
+  const pageTitle = document.querySelector(".topbar h1");
+  const pageSubtitle = document.querySelector(".topbar p");
+  if (pageTitle && !isAdminUser) {
+    pageTitle.textContent = "Mes stagiaires";
+  }
+  if (pageSubtitle && !isAdminUser) {
+    pageSubtitle.textContent = "Consulter et suivre uniquement les stagiaires qui vous sont affectes";
+  }
+}
+
 function bindGlobalEvents() {
   searchInput.addEventListener("input", (e) => {
     query = e.target.value;
@@ -386,6 +413,7 @@ function bindGlobalEvents() {
   createForm.addEventListener("submit", submitCreateForm);
 
   document.getElementById("newTraineeBtn").addEventListener("click", () => {
+    if (!isAdminUser) return;
     resetCreateForm();
     openModal(createModal);
   });
@@ -396,6 +424,7 @@ function bindGlobalEvents() {
 }
 
 async function init() {
+  applyRoleUiState();
   bindGlobalEvents();
   renderStats();
   renderTable();
@@ -404,8 +433,15 @@ async function init() {
     await loadTrainees();
   } catch (error) {
     console.error(error);
-    window.alert("Impossible de charger les stagiaires depuis la base de donnees.");
+    window.alert(error.message || "Impossible de charger les stagiaires.");
   }
 }
+
+window.addEventListener("app-user-ready", (event) => {
+  currentUser = event.detail?.user ?? null;
+  isAdminUser = currentUser?.role === "admin";
+  applyRoleUiState();
+  rerender();
+});
 
 init();

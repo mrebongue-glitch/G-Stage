@@ -184,7 +184,7 @@ async function loadPresences() {
     console.error(error);
     tableBody.innerHTML = `
       <tr>
-        <td class="empty-row" colspan="4">Impossible de charger les presences</td>
+        <td class="empty-row" colspan="4">${escapeHtml(error.message || "Impossible de charger les presences")}</td>
       </tr>
     `;
     statsGrid.innerHTML = "";

@@ -140,6 +140,7 @@ async function loadTrainees() {
     populateSelect();
   } catch (error) {
     console.error(error);
+    window.alert(error.message || "Impossible de charger les stagiaires pour les attestations.");
   }
 }
 

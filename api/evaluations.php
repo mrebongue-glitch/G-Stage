@@ -27,16 +27,35 @@ function appreciationFromScore(float $score): string
 
 function fetchEvaluationOptions(PDO $pdo): array
 {
-    $stmt = $pdo->query(
-        "SELECT a.id,
-                s.nom AS stagiaire_nom,
-                m.titre AS module_titre,
-                a.statut
-           FROM affectations a
-           INNER JOIN stagiaires s ON s.id = a.stagiaire_id
-           INNER JOIN modules m ON m.id = a.module_id
-          ORDER BY s.nom ASC, m.titre ASC"
-    );
+    $user = currentUserFromSession();
+    $isAdmin = ($user['role'] ?? '') === 'admin';
+
+    if ($isAdmin) {
+        $stmt = $pdo->query(
+            "SELECT a.id,
+                    s.nom AS stagiaire_nom,
+                    m.titre AS module_titre,
+                    a.statut
+               FROM affectations a
+               INNER JOIN stagiaires s ON s.id = a.stagiaire_id
+               INNER JOIN modules m ON m.id = a.module_id
+              ORDER BY s.nom ASC, m.titre ASC"
+        );
+    } else {
+        $supervisorId = getCurrentSupervisorId($pdo);
+        $stmt = $pdo->prepare(
+            "SELECT a.id,
+                    s.nom AS stagiaire_nom,
+                    m.titre AS module_titre,
+                    a.statut
+               FROM affectations a
+               INNER JOIN stagiaires s ON s.id = a.stagiaire_id
+               INNER JOIN modules m ON m.id = a.module_id
+              WHERE a.encadreur_id = :encadreur_id
+              ORDER BY s.nom ASC, m.titre ASC"
+        );
+        $stmt->execute([':encadreur_id' => $supervisorId]);
+    }
 
     return array_map(
         static fn (array $row): array => [
@@ -74,17 +93,35 @@ function readEvaluationPayload(): array
 try {
     $pdo = getDB();
     $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
+    $user = currentUserFromSession();
+    $isAdmin = ($user['role'] ?? '') === 'admin';
+    $supervisorId = $isAdmin ? null : getCurrentSupervisorId($pdo);
 
     if ($method === 'GET') {
-        $stmt = $pdo->query(
-            "SELECT e.id, e.affectation_id, e.date_evaluation, e.note, e.commentaire,
-                    s.nom AS stagiaire_nom,
-                    m.titre AS module_titre
-               FROM evaluations e
-               INNER JOIN stagiaires s ON s.id = e.stagiaire_id
-               INNER JOIN modules m ON m.id = e.module_id
-              ORDER BY e.date_evaluation DESC, e.id DESC"
-        );
+        if ($isAdmin) {
+            $stmt = $pdo->query(
+                "SELECT e.id, e.affectation_id, e.date_evaluation, e.note, e.commentaire,
+                        s.nom AS stagiaire_nom,
+                        m.titre AS module_titre
+                   FROM evaluations e
+                   INNER JOIN stagiaires s ON s.id = e.stagiaire_id
+                   INNER JOIN modules m ON m.id = e.module_id
+                  ORDER BY e.date_evaluation DESC, e.id DESC"
+            );
+        } else {
+            $stmt = $pdo->prepare(
+                "SELECT e.id, e.affectation_id, e.date_evaluation, e.note, e.commentaire,
+                        s.nom AS stagiaire_nom,
+                        m.titre AS module_titre
+                   FROM evaluations e
+                   INNER JOIN affectations a ON a.id = e.affectation_id
+                   INNER JOIN stagiaires s ON s.id = e.stagiaire_id
+                   INNER JOIN modules m ON m.id = e.module_id
+                  WHERE a.encadreur_id = :encadreur_id
+                  ORDER BY e.date_evaluation DESC, e.id DESC"
+            );
+            $stmt->execute([':encadreur_id' => $supervisorId]);
+        }
 
         jsonResponse([
             'success' => true,
@@ -107,6 +144,10 @@ try {
 
         if (!$assignmentRow) {
             jsonResponse(['success' => false, 'message' => 'Affectation introuvable'], 404);
+        }
+
+        if (!$isAdmin && !canAccessAssignment($pdo, $supervisorId, (int) $assignmentRow['id'])) {
+            jsonResponse(['success' => false, 'message' => 'Accès refusé à cette affectation'], 403);
         }
 
         $insert = $pdo->prepare(
@@ -163,6 +204,29 @@ try {
             jsonResponse(['success' => false, 'message' => 'Affectation introuvable'], 404);
         }
 
+        if (!$isAdmin && !canAccessAssignment($pdo, $supervisorId, (int) $assignmentRow['id'])) {
+            jsonResponse(['success' => false, 'message' => 'Accès refusé à cette affectation'], 403);
+        }
+
+        if (!$isAdmin) {
+            $ownedEvaluation = $pdo->prepare(
+                "SELECT 1
+                   FROM evaluations e
+                   INNER JOIN affectations a ON a.id = e.affectation_id
+                  WHERE e.id = :id
+                    AND a.encadreur_id = :encadreur_id
+                  LIMIT 1"
+            );
+            $ownedEvaluation->execute([
+                ':id' => $id,
+                ':encadreur_id' => $supervisorId,
+            ]);
+
+            if (!$ownedEvaluation->fetchColumn()) {
+                jsonResponse(['success' => false, 'message' => 'Accès refusé à cette évaluation'], 403);
+            }
+        }
+
         $update = $pdo->prepare(
             "UPDATE evaluations
                 SET affectation_id = :affectation_id,
@@ -200,6 +264,25 @@ try {
     }
 
     if ($method === 'DELETE') {
+        if (!$isAdmin) {
+            $ownedEvaluation = $pdo->prepare(
+                "SELECT 1
+                   FROM evaluations e
+                   INNER JOIN affectations a ON a.id = e.affectation_id
+                  WHERE e.id = :id
+                    AND a.encadreur_id = :encadreur_id
+                  LIMIT 1"
+            );
+            $ownedEvaluation->execute([
+                ':id' => $id,
+                ':encadreur_id' => $supervisorId,
+            ]);
+
+            if (!$ownedEvaluation->fetchColumn()) {
+                jsonResponse(['success' => false, 'message' => 'Accès refusé à cette évaluation'], 403);
+            }
+        }
+
         $delete = $pdo->prepare("DELETE FROM evaluations WHERE id = :id");
         $delete->execute([':id' => $id]);
 

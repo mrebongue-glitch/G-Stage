@@ -19,13 +19,27 @@ function buildMention(string $status): string
 try {
     $pdo = getDB();
     $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
+    $user = currentUserFromSession();
+    $isAdmin = ($user['role'] ?? '') === 'admin';
+    $supervisorId = $isAdmin ? null : getCurrentSupervisorId($pdo);
 
     if ($method === 'GET') {
-        $stmt = $pdo->query(
-            "SELECT id, nom, email, etablissement, filiere, niveau, date_debut, date_fin, statut
-               FROM stagiaires
-              ORDER BY nom ASC"
-        );
+        if ($isAdmin) {
+            $stmt = $pdo->query(
+                "SELECT id, nom, email, etablissement, filiere, niveau, date_debut, date_fin, statut
+                   FROM stagiaires
+                  ORDER BY nom ASC"
+            );
+        } else {
+            $stmt = $pdo->prepare(
+                "SELECT DISTINCT s.id, s.nom, s.email, s.etablissement, s.filiere, s.niveau, s.date_debut, s.date_fin, s.statut
+                   FROM stagiaires s
+                   INNER JOIN affectations a ON a.stagiaire_id = s.id
+                  WHERE a.encadreur_id = :encadreur_id
+                  ORDER BY s.nom ASC"
+            );
+            $stmt->execute([':encadreur_id' => $supervisorId]);
+        }
 
         jsonResponse([
             'success' => true,
@@ -42,6 +56,10 @@ try {
 
     if ($stagiaireId <= 0) {
         jsonResponse(['success' => false, 'message' => 'Stagiaire requis'], 400);
+    }
+
+    if (!$isAdmin && !canAccessSupervisorScope($pdo, $supervisorId, $stagiaireId)) {
+        jsonResponse(['success' => false, 'message' => 'Accès refusé à ce stagiaire'], 403);
     }
 
     $stmt = $pdo->prepare(

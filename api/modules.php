@@ -6,6 +6,7 @@ require_once __DIR__ . '/db.php';
 
 handlePreflight(['GET', 'POST', 'PUT', 'DELETE']);
 requireAuthentication();
+requireAdminAccess();
 
 function normalizeModule(array $row): array
 {

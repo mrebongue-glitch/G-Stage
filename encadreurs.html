@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Gestion des Encadreurs</title>
   <link rel="stylesheet" href="encadreurs.css" />
-  <script>fetch("api/check_auth.php",{credentials:"same-origin"}).then(function(r){if(!r.ok){sessionStorage.removeItem("user");window.location.replace("login.html");}});</script>
+  <script src="role-ui.js"></script>
 </head>
 <body>
   <div class="app">
@@ -160,6 +160,5 @@
   </div>
 
   <script src="encadreurs.js"></script>
-  <script>document.addEventListener("DOMContentLoaded",function(){var b=document.getElementById("logoutBtn");if(b){b.addEventListener("click",function(e){e.preventDefault();fetch("api/logout.php",{credentials:"same-origin"}).finally(function(){sessionStorage.removeItem("user");window.location.replace("login.html");});});}});</script>
 </body>
 </html>

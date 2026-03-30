@@ -108,6 +108,11 @@ function getById(id) {
   return supervisors.find((s) => s.id === id);
 }
 
+function updateSupervisorInState(updatedRow) {
+  if (!updatedRow || typeof updatedRow.id !== "number") return;
+  supervisors = supervisors.map((row) => (row.id === updatedRow.id ? updatedRow : row));
+}
+
 function openModal(modal) {
   modal.classList.remove("hidden");
 }
@@ -156,11 +161,32 @@ function submitEdit(evt) {
   rerender();
 }
 
-function sendInvite(id) {
+async function sendInvite(id) {
   const row = getById(id);
   if (!row) return;
-  row.invited = true;
-  rerender();
+
+  const res = await fetch("api/encadreurs.php", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
+    body: JSON.stringify({ action: "invite", id })
+  });
+
+  const data = await res.json();
+
+  if (!res.ok || !data.success) {
+    throw new Error(data.message || `HTTP ${res.status}`);
+  }
+
+  if (data.encadreur) {
+    updateSupervisorInState(data.encadreur);
+    rerender();
+  }
+
+  return {
+    row,
+    credentials: data.credentials ?? null
+  };
 }
 
 function toggleAccount(id) {
@@ -179,9 +205,41 @@ function removeSupervisor(id) {
   rerender();
 }
 
-function inviteAll() {
-  supervisors = supervisors.map((s) => ({ ...s, invited: true }));
-  rerender();
+async function inviteAll() {
+  const pendingRows = supervisors.filter((row) => row.account !== "avec");
+
+  if (pendingRows.length === 0) {
+    window.alert("Tous les encadreurs disposent deja d'un compte.");
+    return;
+  }
+
+  const generated = [];
+  const errors = [];
+
+  for (const row of pendingRows) {
+    try {
+      const result = await sendInvite(row.id);
+      if (result?.credentials) {
+        generated.push(
+          `${row.name} : ${result.credentials.identifiant} / ${result.credentials.mot_de_passe_temporaire}`
+        );
+      }
+    } catch (error) {
+      errors.push(`${row.name} : ${error.message || "Erreur inconnue"}`);
+    }
+  }
+
+  const messages = [];
+  if (generated.length > 0) {
+    messages.push(`Comptes generes :\n${generated.join("\n")}`);
+  }
+  if (errors.length > 0) {
+    messages.push(`Erreurs :\n${errors.join("\n")}`);
+  }
+
+  if (messages.length > 0) {
+    window.alert(messages.join("\n\n"));
+  }
 }
 
 function resetCreateForm() {
@@ -305,7 +363,17 @@ function handleTableClick(evt) {
   }
 
   if (action === "invite" && id !== null) {
-    sendInvite(id);
+    sendInvite(id)
+      .then((result) => {
+        if (result?.credentials) {
+          window.alert(
+            `Compte cree pour ${result.row.name}\nIdentifiant : ${result.credentials.identifiant}\nMot de passe temporaire : ${result.credentials.mot_de_passe_temporaire}`
+          );
+        }
+      })
+      .catch((error) => {
+        window.alert(error.message || "Impossible de generer le compte utilisateur.");
+      });
   }
 
   if (action === "toggle-account" && id !== null) {

@@ -22,6 +22,9 @@ function normalizePresenceRow(array $row): array
 try {
     $pdo = getDB();
     $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
+    $user = currentUserFromSession();
+    $isAdmin = ($user['role'] ?? '') === 'admin';
+    $supervisorId = $isAdmin ? null : getCurrentSupervisorId($pdo);
 
     if ($method === 'GET') {
         $date = trim($_GET['date'] ?? '');
@@ -29,17 +32,36 @@ try {
             jsonResponse(['success' => false, 'message' => 'Date requise'], 400);
         }
 
-        $stmt = $pdo->prepare(
-            "SELECT s.id, s.nom, s.etablissement, s.filiere, s.niveau,
-                    p.statut AS presence_statut, p.motif
-               FROM stagiaires s
-               LEFT JOIN presences p
-                 ON p.stagiaire_id = s.id
-                AND p.date_presence = :date_presence
-              WHERE s.statut = 'actif'
-              ORDER BY s.nom ASC"
-        );
-        $stmt->execute([':date_presence' => $date]);
+        if ($isAdmin) {
+            $stmt = $pdo->prepare(
+                "SELECT s.id, s.nom, s.etablissement, s.filiere, s.niveau,
+                        p.statut AS presence_statut, p.motif
+                   FROM stagiaires s
+                   LEFT JOIN presences p
+                     ON p.stagiaire_id = s.id
+                    AND p.date_presence = :date_presence
+                  WHERE s.statut = 'actif'
+                  ORDER BY s.nom ASC"
+            );
+            $stmt->execute([':date_presence' => $date]);
+        } else {
+            $stmt = $pdo->prepare(
+                "SELECT DISTINCT s.id, s.nom, s.etablissement, s.filiere, s.niveau,
+                        p.statut AS presence_statut, p.motif
+                   FROM stagiaires s
+                   INNER JOIN affectations a ON a.stagiaire_id = s.id
+                   LEFT JOIN presences p
+                     ON p.stagiaire_id = s.id
+                    AND p.date_presence = :date_presence
+                  WHERE s.statut = 'actif'
+                    AND a.encadreur_id = :encadreur_id
+                  ORDER BY s.nom ASC"
+            );
+            $stmt->execute([
+                ':date_presence' => $date,
+                ':encadreur_id' => $supervisorId,
+            ]);
+        }
 
         jsonResponse([
             'success' => true,
@@ -72,6 +94,10 @@ try {
         jsonResponse(['success' => false, 'message' => 'Stagiaire introuvable'], 404);
     }
 
+    if (!$isAdmin && !canAccessSupervisorScope($pdo, $supervisorId, $stagiaireId)) {
+        jsonResponse(['success' => false, 'message' => 'Accès refusé à ce stagiaire'], 403);
+    }
+
     $upsert = $pdo->prepare(
         "INSERT INTO presences (stagiaire_id, date_presence, statut, motif)
          VALUES (:stagiaire_id, :date_presence, :statut, :motif)
@@ -88,7 +114,7 @@ try {
 
     jsonResponse([
         'success' => true,
-        'message' => 'Présence enregistrée',
+        'message' => 'Présence enregistrée avec succès',
     ]);
 } catch (PDOException $e) {
     jsonResponse(['success' => false, 'message' => 'Erreur serveur'], 500);

@@ -121,14 +121,10 @@ async function loadDashboard() {
       return;
     }
 
-    if (!res.ok) {
-      throw new Error(`HTTP ${res.status}`);
-    }
-
     const data = await res.json();
 
-    if (!data.success) {
-      throw new Error(data.message || "Chargement impossible");
+    if (!res.ok || !data.success) {
+      throw new Error(data.message || `HTTP ${res.status}`);
     }
 
     statsData = data.stats || [];
@@ -145,7 +141,7 @@ async function loadDashboard() {
     renderAssignments();
   } catch (error) {
     console.error(error);
-    renderError("Impossible de charger les donnees du tableau de bord.");
+    renderError(error.message || "Impossible de charger les donnees du tableau de bord.");
   }
 }
 

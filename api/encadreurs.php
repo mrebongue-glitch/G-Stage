@@ -1,10 +1,10 @@
 <?php
-// api/encadreurs.php — Liste et création des encadreurs
+// api/encadreurs.php — Liste, création, modification et suppression des encadreurs
 
 require_once __DIR__ . '/bootstrap.php';
 require_once __DIR__ . '/db.php';
 
-handlePreflight(['GET', 'POST']);
+handlePreflight(['GET', 'POST', 'PUT', 'DELETE']);
 requireAuthentication();
 requireAdminAccess();
 
@@ -63,114 +63,9 @@ function generateLoginFromEmail(PDO $pdo, string $email): string
     }
 }
 
-try {
-    $pdo = getDB();
-
-    if ($_SERVER['REQUEST_METHOD'] === 'GET') {
-        $stmt = $pdo->query(
-            "SELECT id, nom, role, telephone, email, a_compte, invitation_envoyee
-               FROM encadreurs
-              ORDER BY created_at DESC, id DESC"
-        );
-
-        jsonResponse([
-            'success' => true,
-            'encadreurs' => array_map('normalizeSupervisor', $stmt->fetchAll()),
-        ]);
-    }
-
-    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-        jsonResponse(['success' => false, 'message' => 'Méthode non autorisée'], 405);
-    }
-
+function readSupervisorPayload(): array
+{
     $body = readJsonBody();
-
-    if (($body['action'] ?? '') === 'invite') {
-        $encadreurId = (int) ($body['id'] ?? 0);
-
-        if ($encadreurId <= 0) {
-            jsonResponse(['success' => false, 'message' => 'Encadreur invalide'], 400);
-        }
-
-        $selectEncadreur = $pdo->prepare(
-            "SELECT id, nom, role, telephone, email, a_compte, invitation_envoyee
-               FROM encadreurs
-              WHERE id = :id
-              LIMIT 1"
-        );
-        $selectEncadreur->execute([':id' => $encadreurId]);
-        $encadreur = $selectEncadreur->fetch();
-
-        if (!$encadreur) {
-            jsonResponse(['success' => false, 'message' => 'Encadreur introuvable'], 404);
-        }
-
-        if ((int) $encadreur['a_compte'] === 1) {
-            jsonResponse([
-                'success' => false,
-                'message' => 'Cet encadreur dispose deja d\'un compte utilisateur'
-            ], 409);
-        }
-
-        $existingUser = $pdo->prepare(
-            "SELECT id
-               FROM utilisateurs
-              WHERE encadreur_id = :encadreur_id
-                 OR identifiant = :identifiant
-              LIMIT 1"
-        );
-
-        $temporaryPassword = generateTemporaryPassword();
-        $hashedPassword = password_hash($temporaryPassword, PASSWORD_BCRYPT);
-        $login = generateLoginFromEmail($pdo, (string) $encadreur['email']);
-        $existingUser->execute([
-            ':encadreur_id' => $encadreurId,
-            ':identifiant' => $login,
-        ]);
-
-        if ($existingUser->fetch()) {
-            jsonResponse([
-                'success' => false,
-                'message' => 'Un compte est deja lie a cet encadreur'
-            ], 409);
-        }
-
-        $pdo->beginTransaction();
-
-        $createUser = $pdo->prepare(
-            "INSERT INTO utilisateurs (nom, identifiant, mot_de_passe, role, encadreur_id, actif)
-             VALUES (:nom, :identifiant, :mot_de_passe, 'encadreur', :encadreur_id, 1)"
-        );
-        $createUser->execute([
-            ':nom' => $encadreur['nom'],
-            ':identifiant' => $login,
-            ':mot_de_passe' => $hashedPassword,
-            ':encadreur_id' => $encadreurId,
-        ]);
-
-        $updateEncadreur = $pdo->prepare(
-            "UPDATE encadreurs
-                SET a_compte = 1,
-                    invitation_envoyee = 1
-              WHERE id = :id"
-        );
-        $updateEncadreur->execute([':id' => $encadreurId]);
-
-        $pdo->commit();
-
-        $selectEncadreur->execute([':id' => $encadreurId]);
-        $updated = $selectEncadreur->fetch();
-
-        jsonResponse([
-            'success' => true,
-            'message' => 'Compte utilisateur cree et invitation envoyee',
-            'encadreur' => $updated ? normalizeSupervisor($updated) : null,
-            'credentials' => [
-                'identifiant' => $login,
-                'mot_de_passe_temporaire' => $temporaryPassword,
-            ],
-        ]);
-    }
 
     $nom = trim($body['name'] ?? '');
     $role = trim($body['role'] ?? '');
@@ -191,34 +86,228 @@ try {
         jsonResponse(['success' => false, 'message' => 'Type de compte invalide'], 400);
     }
 
-    $insert = $pdo->prepare(
-        "INSERT INTO encadreurs (nom, role, telephone, email, a_compte, invitation_envoyee)
-         VALUES (:nom, :role, :telephone, :email, :a_compte, :invitation_envoyee)"
-    );
+    return [
+        'name' => $nom,
+        'role' => $role,
+        'phone' => ($telephone !== '') ? $telephone : null,
+        'email' => $email,
+        'account' => $account,
+        'invited' => $invited,
+    ];
+}
 
-    $insert->execute([
-        ':nom' => $nom,
-        ':role' => $role,
-        ':telephone' => ($telephone !== '') ? $telephone : null,
-        ':email' => $email,
-        ':a_compte' => ($account === 'avec') ? 1 : 0,
-        ':invitation_envoyee' => $invited,
-    ]);
+try {
+    $pdo = getDB();
 
-    $select = $pdo->prepare(
-        "SELECT id, nom, role, telephone, email, a_compte, invitation_envoyee
-           FROM encadreurs
-          WHERE id = :id
-          LIMIT 1"
-    );
-    $select->execute([':id' => (int) $pdo->lastInsertId()]);
-    $created = $select->fetch();
+    if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+        $stmt = $pdo->query(
+            "SELECT id, nom, role, telephone, email, a_compte, invitation_envoyee
+               FROM encadreurs
+              ORDER BY created_at DESC, id DESC"
+        );
 
-    jsonResponse([
-        'success' => true,
-        'message' => 'Encadreur enregistré avec succès',
-        'encadreur' => $created ? normalizeSupervisor($created) : null,
-    ], 201);
+        jsonResponse([
+            'success' => true,
+            'encadreurs' => array_map('normalizeSupervisor', $stmt->fetchAll()),
+        ]);
+    }
+
+    $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
+
+    if ($method === 'POST') {
+        $body = readJsonBody();
+
+        if (($body['action'] ?? '') === 'invite') {
+            $encadreurId = (int) ($body['id'] ?? 0);
+
+            if ($encadreurId <= 0) {
+                jsonResponse(['success' => false, 'message' => 'Encadreur invalide'], 400);
+            }
+
+            $selectEncadreur = $pdo->prepare(
+                "SELECT id, nom, role, telephone, email, a_compte, invitation_envoyee
+                   FROM encadreurs
+                  WHERE id = :id
+                  LIMIT 1"
+            );
+            $selectEncadreur->execute([':id' => $encadreurId]);
+            $encadreur = $selectEncadreur->fetch();
+
+            if (!$encadreur) {
+                jsonResponse(['success' => false, 'message' => 'Encadreur introuvable'], 404);
+            }
+
+            if ((int) $encadreur['a_compte'] === 1) {
+                jsonResponse([
+                    'success' => false,
+                    'message' => 'Cet encadreur dispose deja d\'un compte utilisateur'
+                ], 409);
+            }
+
+            $existingUser = $pdo->prepare(
+                "SELECT id
+                   FROM utilisateurs
+                  WHERE encadreur_id = :encadreur_id
+                     OR identifiant = :identifiant
+                  LIMIT 1"
+            );
+
+            $temporaryPassword = generateTemporaryPassword();
+            $hashedPassword = password_hash($temporaryPassword, PASSWORD_BCRYPT);
+            $login = generateLoginFromEmail($pdo, (string) $encadreur['email']);
+            $existingUser->execute([
+                ':encadreur_id' => $encadreurId,
+                ':identifiant' => $login,
+            ]);
+
+            if ($existingUser->fetch()) {
+                jsonResponse([
+                    'success' => false,
+                    'message' => 'Un compte est deja lie a cet encadreur'
+                ], 409);
+            }
+
+            $pdo->beginTransaction();
+
+            $createUser = $pdo->prepare(
+                "INSERT INTO utilisateurs (nom, identifiant, mot_de_passe, role, encadreur_id, actif)
+                 VALUES (:nom, :identifiant, :mot_de_passe, 'encadreur', :encadreur_id, 1)"
+            );
+            $createUser->execute([
+                ':nom' => $encadreur['nom'],
+                ':identifiant' => $login,
+                ':mot_de_passe' => $hashedPassword,
+                ':encadreur_id' => $encadreurId,
+            ]);
+
+            $updateEncadreur = $pdo->prepare(
+                "UPDATE encadreurs
+                    SET a_compte = 1,
+                        invitation_envoyee = 1
+                  WHERE id = :id"
+            );
+            $updateEncadreur->execute([':id' => $encadreurId]);
+
+            $pdo->commit();
+
+            $selectEncadreur->execute([':id' => $encadreurId]);
+            $updated = $selectEncadreur->fetch();
+
+            jsonResponse([
+                'success' => true,
+                'message' => 'Compte utilisateur cree et invitation envoyee',
+                'encadreur' => $updated ? normalizeSupervisor($updated) : null,
+                'credentials' => [
+                    'identifiant' => $login,
+                    'mot_de_passe_temporaire' => $temporaryPassword,
+                ],
+            ]);
+        }
+
+        $payload = readSupervisorPayload();
+
+        $insert = $pdo->prepare(
+            "INSERT INTO encadreurs (nom, role, telephone, email, a_compte, invitation_envoyee)
+             VALUES (:nom, :role, :telephone, :email, :a_compte, :invitation_envoyee)"
+        );
+
+        $insert->execute([
+            ':nom' => $payload['name'],
+            ':role' => $payload['role'],
+            ':telephone' => $payload['phone'],
+            ':email' => $payload['email'],
+            ':a_compte' => ($payload['account'] === 'avec') ? 1 : 0,
+            ':invitation_envoyee' => $payload['invited'],
+        ]);
+
+        $select = $pdo->prepare(
+            "SELECT id, nom, role, telephone, email, a_compte, invitation_envoyee
+               FROM encadreurs
+              WHERE id = :id
+              LIMIT 1"
+        );
+        $select->execute([':id' => (int) $pdo->lastInsertId()]);
+        $created = $select->fetch();
+
+        jsonResponse([
+            'success' => true,
+            'message' => 'Encadreur enregistré avec succès',
+            'encadreur' => $created ? normalizeSupervisor($created) : null,
+        ], 201);
+    }
+
+    $id = (int) ($_GET['id'] ?? 0);
+    if ($id <= 0) {
+        jsonResponse(['success' => false, 'message' => 'Identifiant de l\'encadreur requis'], 400);
+    }
+
+    if ($method === 'PUT') {
+        $existing = $pdo->prepare(
+            "SELECT invitation_envoyee
+               FROM encadreurs
+              WHERE id = :id
+              LIMIT 1"
+        );
+        $existing->execute([':id' => $id]);
+        $row = $existing->fetch();
+
+        if (!$row) {
+            jsonResponse(['success' => false, 'message' => 'Encadreur introuvable'], 404);
+        }
+
+        $payload = readSupervisorPayload();
+
+        $update = $pdo->prepare(
+            "UPDATE encadreurs
+                SET nom = :nom,
+                    role = :role,
+                    telephone = :telephone,
+                    email = :email,
+                    a_compte = :a_compte,
+                    invitation_envoyee = :invitation_envoyee
+              WHERE id = :id"
+        );
+        $update->execute([
+            ':id' => $id,
+            ':nom' => $payload['name'],
+            ':role' => $payload['role'],
+            ':telephone' => $payload['phone'],
+            ':email' => $payload['email'],
+            ':a_compte' => ($payload['account'] === 'avec') ? 1 : 0,
+            ':invitation_envoyee' => $payload['invited'],
+        ]);
+
+        $select = $pdo->prepare(
+            "SELECT id, nom, role, telephone, email, a_compte, invitation_envoyee
+               FROM encadreurs
+              WHERE id = :id
+              LIMIT 1"
+        );
+        $select->execute([':id' => $id]);
+        $updated = $select->fetch();
+
+        jsonResponse([
+            'success' => true,
+            'message' => 'Encadreur mis à jour avec succès',
+            'encadreur' => $updated ? normalizeSupervisor($updated) : null,
+        ]);
+    }
+
+    if ($method === 'DELETE') {
+        $delete = $pdo->prepare("DELETE FROM encadreurs WHERE id = :id");
+        $delete->execute([':id' => $id]);
+
+        if ($delete->rowCount() === 0) {
+            jsonResponse(['success' => false, 'message' => 'Encadreur introuvable'], 404);
+        }
+
+        jsonResponse([
+            'success' => true,
+            'message' => 'Encadreur supprimé avec succès',
+        ]);
+    }
+
+    jsonResponse(['success' => false, 'message' => 'Méthode non autorisée'], 405);
 } catch (PDOException $e) {
     if (isset($pdo) && $pdo instanceof PDO && $pdo->inTransaction()) {
         $pdo->rollBack();

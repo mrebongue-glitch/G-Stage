@@ -145,38 +145,69 @@ function openEdit(row) {
   openModal(editModal);
 }
 
-function submitEdit(evt) {
+async function fetchSupervisorApi(url, options = {}) {
+  const res = await fetch(url, {
+    credentials: "same-origin",
+    ...options
+  });
+
+  if (res.status === 401) {
+    sessionStorage.removeItem("user");
+    window.location.replace("login.html");
+    return null;
+  }
+
+  const data = await res.json();
+  if (!res.ok || !data.success) {
+    throw new Error(data.message || `HTTP ${res.status}`);
+  }
+
+  return data;
+}
+
+async function submitEdit(evt) {
   evt.preventDefault();
   const id = Number(document.getElementById("editId").value);
   const row = getById(id);
   if (!row) return;
 
-  row.name = document.getElementById("editName").value.trim();
-  row.email = document.getElementById("editEmail").value.trim();
-  row.phone = document.getElementById("editPhone").value.trim();
-  row.role = document.getElementById("editRole").value.trim();
-  row.account = document.getElementById("editAccount").value;
+  try {
+    const data = await fetchSupervisorApi(`api/encadreurs.php?id=${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: document.getElementById("editName").value.trim(),
+        email: document.getElementById("editEmail").value.trim(),
+        phone: document.getElementById("editPhone").value.trim(),
+        role: document.getElementById("editRole").value.trim(),
+        account: document.getElementById("editAccount").value,
+        invited: row.invited
+      })
+    });
 
-  closeModal(editModal);
-  rerender();
+    if (!data) return;
+
+    if (data.encadreur) {
+      updateSupervisorInState(data.encadreur);
+    }
+
+    closeModal(editModal);
+    rerender();
+  } catch (error) {
+    window.alert(error.message || "Impossible de modifier l'encadreur.");
+  }
 }
 
 async function sendInvite(id) {
   const row = getById(id);
   if (!row) return;
 
-  const res = await fetch("api/encadreurs.php", {
+  const data = await fetchSupervisorApi("api/encadreurs.php", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    credentials: "same-origin",
     body: JSON.stringify({ action: "invite", id })
   });
-
-  const data = await res.json();
-
-  if (!res.ok || !data.success) {
-    throw new Error(data.message || `HTTP ${res.status}`);
-  }
+  if (!data) return null;
 
   if (data.encadreur) {
     updateSupervisorInState(data.encadreur);
@@ -189,20 +220,54 @@ async function sendInvite(id) {
   };
 }
 
-function toggleAccount(id) {
+async function toggleAccount(id) {
   const row = getById(id);
   if (!row) return;
-  row.account = row.account === "avec" ? "sans" : "avec";
-  rerender();
+
+  try {
+    const data = await fetchSupervisorApi(`api/encadreurs.php?id=${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: row.name,
+        email: row.email,
+        phone: row.phone || "",
+        role: row.role,
+        account: row.account === "avec" ? "sans" : "avec",
+        invited: row.invited
+      })
+    });
+
+    if (!data) return;
+
+    if (data.encadreur) {
+      updateSupervisorInState(data.encadreur);
+    }
+
+    rerender();
+  } catch (error) {
+    window.alert(error.message || "Impossible de mettre a jour le type de compte.");
+  }
 }
 
-function removeSupervisor(id) {
+async function removeSupervisor(id) {
   const idx = supervisors.findIndex((s) => s.id === id);
   if (idx === -1) return;
   const ok = window.confirm("Confirmer la suppression de cet encadreur ?");
   if (!ok) return;
-  supervisors.splice(idx, 1);
-  rerender();
+
+  try {
+    const data = await fetchSupervisorApi(`api/encadreurs.php?id=${id}`, {
+      method: "DELETE"
+    });
+
+    if (!data) return;
+
+    supervisors.splice(idx, 1);
+    rerender();
+  } catch (error) {
+    window.alert(error.message || "Impossible de supprimer l'encadreur.");
+  }
 }
 
 async function inviteAll() {
@@ -258,24 +323,8 @@ function showCreateMessage(message, type) {
 }
 
 async function loadSupervisors() {
-  const res = await fetch("api/encadreurs.php", {
-    credentials: "same-origin"
-  });
-
-  if (res.status === 401) {
-    sessionStorage.removeItem("user");
-    window.location.replace("login.html");
-    return;
-  }
-
-  if (!res.ok) {
-    throw new Error(`HTTP ${res.status}`);
-  }
-
-  const data = await res.json();
-  if (!data.success) {
-    throw new Error(data.message || "Chargement impossible");
-  }
+  const data = await fetchSupervisorApi("api/encadreurs.php");
+  if (!data) return;
 
   supervisors = Array.isArray(data.encadreurs) ? data.encadreurs : [];
   rerender();
@@ -298,18 +347,11 @@ async function submitCreateForm(evt) {
   showCreateMessage("Enregistrement en cours...", "success");
 
   try {
-    const res = await fetch("api/encadreurs.php", {
+    const data = await fetchSupervisorApi("api/encadreurs.php", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      credentials: "same-origin",
       body: JSON.stringify(payload)
     });
-
-    const data = await res.json();
-
-    if (!res.ok || !data.success) {
-      throw new Error(data.message || `HTTP ${res.status}`);
-    }
 
     if (data.encadreur) {
       supervisors.unshift(data.encadreur);

@@ -176,42 +176,116 @@ function openEdit(row) {
   openModal(editModal);
 }
 
-function updateFromEditForm(evt) {
+async function fetchTraineeApi(url, options = {}) {
+  const res = await fetch(url, {
+    credentials: "same-origin",
+    ...options
+  });
+
+  if (res.status === 401) {
+    sessionStorage.removeItem("user");
+    window.location.replace("login.html");
+    return null;
+  }
+
+  const data = await res.json();
+  if (!res.ok || !data.success) {
+    throw new Error(data.message || `HTTP ${res.status}`);
+  }
+
+  return data;
+}
+
+async function updateFromEditForm(evt) {
   evt.preventDefault();
   if (!isAdminUser) return;
+
   const id = Number(document.getElementById("editId").value);
-  const row = getRowById(id);
-  if (!row) return;
+  const payload = {
+    name: document.getElementById("editName").value.trim(),
+    email: document.getElementById("editEmail").value.trim(),
+    school: document.getElementById("editSchool").value.trim(),
+    field: document.getElementById("editField").value.trim(),
+    level: document.getElementById("editLevel").value.trim(),
+    startDate: document.getElementById("editStart").value,
+    endDate: document.getElementById("editEnd").value,
+    status: document.getElementById("editStatus").value
+  };
 
-  row.name = document.getElementById("editName").value.trim();
-  row.email = document.getElementById("editEmail").value.trim();
-  row.school = document.getElementById("editSchool").value.trim();
-  row.field = document.getElementById("editField").value.trim();
-  row.level = document.getElementById("editLevel").value.trim();
-  row.startDate = document.getElementById("editStart").value;
-  row.endDate = document.getElementById("editEnd").value;
-  row.status = document.getElementById("editStatus").value;
+  try {
+    const data = await fetchTraineeApi(`api/stagiaires.php?id=${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
 
-  closeModal(editModal);
-  rerender();
+    if (!data) return;
+
+    const index = trainees.findIndex((t) => t.id === id);
+    if (index !== -1 && data.stagiaire) {
+      trainees[index] = data.stagiaire;
+    }
+
+    closeModal(editModal);
+    rerender();
+  } catch (error) {
+    window.alert(error.message || "Impossible de modifier le stagiaire.");
+  }
 }
 
-function setStatus(id, status) {
+async function setStatus(id, status) {
   if (!isAdminUser) return;
   const row = getRowById(id);
   if (!row) return;
-  row.status = status;
-  rerender();
+
+  try {
+    const data = await fetchTraineeApi(`api/stagiaires.php?id=${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: row.name,
+        email: row.email,
+        school: row.school,
+        field: row.field,
+        level: row.level,
+        startDate: row.startDate,
+        endDate: row.endDate,
+        status
+      })
+    });
+
+    if (!data) return;
+
+    const index = trainees.findIndex((t) => t.id === id);
+    if (index !== -1 && data.stagiaire) {
+      trainees[index] = data.stagiaire;
+    }
+
+    rerender();
+  } catch (error) {
+    window.alert(error.message || "Impossible de mettre à jour le statut du stagiaire.");
+  }
 }
 
-function removeTrainee(id) {
+async function removeTrainee(id) {
   if (!isAdminUser) return;
   const idx = trainees.findIndex((t) => t.id === id);
   if (idx === -1) return;
   const ok = window.confirm("Confirmer la suppression de ce stagiaire ?");
   if (!ok) return;
-  trainees.splice(idx, 1);
-  rerender();
+
+  try {
+    const data = await fetchTraineeApi(`api/stagiaires.php?id=${id}`, {
+      method: "DELETE"
+    });
+
+    if (!data) return;
+
+    trainees.splice(idx, 1);
+    rerender();
+  } catch (error) {
+    window.alert(error.message || "Impossible de supprimer le stagiaire.");
+  }
 }
 
 function resetCreateForm() {
@@ -229,20 +303,8 @@ function showCreateMessage(message, type) {
 }
 
 async function loadTrainees() {
-  const res = await fetch("api/stagiaires.php", {
-    credentials: "same-origin"
-  });
-
-  if (res.status === 401) {
-    sessionStorage.removeItem("user");
-    window.location.replace("login.html");
-    return;
-  }
-
-  const data = await res.json();
-  if (!res.ok || !data.success) {
-    throw new Error(data.message || `HTTP ${res.status}`);
-  }
+  const data = await fetchTraineeApi("api/stagiaires.php");
+  if (!data) return;
 
   trainees = Array.isArray(data.stagiaires) ? data.stagiaires : [];
   rerender();
@@ -268,18 +330,11 @@ async function submitCreateForm(evt) {
   showCreateMessage("Enregistrement en cours...", "success");
 
   try {
-    const res = await fetch("api/stagiaires.php", {
+    const data = await fetchTraineeApi("api/stagiaires.php", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      credentials: "same-origin",
       body: JSON.stringify(payload)
     });
-
-    const data = await res.json();
-
-    if (!res.ok || !data.success) {
-      throw new Error(data.message || `HTTP ${res.status}`);
-    }
 
     if (data.stagiaire) {
       trainees.unshift(data.stagiaire);

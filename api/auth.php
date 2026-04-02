@@ -11,7 +11,7 @@ require_once __DIR__ . '/db.php';
 handlePreflight(['POST']);
 ensureMethod('POST');
 
-// Lire le body JSON
+
 $body = readJsonBody();
 
 $identifiant  = trim($body['identifiant']  ?? '');

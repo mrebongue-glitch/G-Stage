@@ -63,6 +63,82 @@ function generateLoginFromEmail(PDO $pdo, string $email): string
     }
 }
 
+function findUserBySupervisorId(PDO $pdo, int $encadreurId): ?array
+{
+    $stmt = $pdo->prepare(
+        "SELECT id, identifiant
+           FROM utilisateurs
+          WHERE encadreur_id = :encadreur_id
+          LIMIT 1"
+    );
+    $stmt->execute([':encadreur_id' => $encadreurId]);
+    $row = $stmt->fetch();
+
+    return $row ?: null;
+}
+
+function createUserForSupervisor(PDO $pdo, array $encadreur): array
+{
+    $temporaryPassword = generateTemporaryPassword();
+    $login = generateLoginFromEmail($pdo, (string) $encadreur['email']);
+    $hashedPassword = password_hash($temporaryPassword, PASSWORD_BCRYPT);
+
+    $createUser = $pdo->prepare(
+        "INSERT INTO utilisateurs (nom, identifiant, mot_de_passe, role, encadreur_id, actif)
+         VALUES (:nom, :identifiant, :mot_de_passe, 'encadreur', :encadreur_id, 1)"
+    );
+    $createUser->execute([
+        ':nom' => $encadreur['nom'],
+        ':identifiant' => $login,
+        ':mot_de_passe' => $hashedPassword,
+        ':encadreur_id' => (int) $encadreur['id'],
+    ]);
+
+    return [
+        'identifiant' => $login,
+        'mot_de_passe_temporaire' => $temporaryPassword,
+    ];
+}
+
+function resetSupervisorUserPassword(PDO $pdo, int $userId): array
+{
+    $temporaryPassword = generateTemporaryPassword();
+    $hashedPassword = password_hash($temporaryPassword, PASSWORD_BCRYPT);
+
+    $update = $pdo->prepare(
+        "UPDATE utilisateurs
+            SET mot_de_passe = :mot_de_passe,
+                actif = 1
+          WHERE id = :id"
+    );
+    $update->execute([
+        ':id' => $userId,
+        ':mot_de_passe' => $hashedPassword,
+    ]);
+
+    $select = $pdo->prepare(
+        "SELECT identifiant
+           FROM utilisateurs
+          WHERE id = :id
+          LIMIT 1"
+    );
+    $select->execute([':id' => $userId]);
+
+    return [
+        'identifiant' => (string) ($select->fetchColumn() ?? ''),
+        'mot_de_passe_temporaire' => $temporaryPassword,
+    ];
+}
+
+function deleteSupervisorUser(PDO $pdo, int $encadreurId): void
+{
+    $delete = $pdo->prepare(
+        "DELETE FROM utilisateurs
+          WHERE encadreur_id = :encadreur_id"
+    );
+    $delete->execute([':encadreur_id' => $encadreurId]);
+}
+
 function readSupervisorPayload(): array
 {
     $body = readJsonBody();
@@ -137,48 +213,11 @@ try {
                 jsonResponse(['success' => false, 'message' => 'Encadreur introuvable'], 404);
             }
 
-            if ((int) $encadreur['a_compte'] === 1) {
-                jsonResponse([
-                    'success' => false,
-                    'message' => 'Cet encadreur dispose deja d\'un compte utilisateur'
-                ], 409);
-            }
-
-            $existingUser = $pdo->prepare(
-                "SELECT id
-                   FROM utilisateurs
-                  WHERE encadreur_id = :encadreur_id
-                     OR identifiant = :identifiant
-                  LIMIT 1"
-            );
-
-            $temporaryPassword = generateTemporaryPassword();
-            $hashedPassword = password_hash($temporaryPassword, PASSWORD_BCRYPT);
-            $login = generateLoginFromEmail($pdo, (string) $encadreur['email']);
-            $existingUser->execute([
-                ':encadreur_id' => $encadreurId,
-                ':identifiant' => $login,
-            ]);
-
-            if ($existingUser->fetch()) {
-                jsonResponse([
-                    'success' => false,
-                    'message' => 'Un compte est deja lie a cet encadreur'
-                ], 409);
-            }
-
             $pdo->beginTransaction();
-
-            $createUser = $pdo->prepare(
-                "INSERT INTO utilisateurs (nom, identifiant, mot_de_passe, role, encadreur_id, actif)
-                 VALUES (:nom, :identifiant, :mot_de_passe, 'encadreur', :encadreur_id, 1)"
-            );
-            $createUser->execute([
-                ':nom' => $encadreur['nom'],
-                ':identifiant' => $login,
-                ':mot_de_passe' => $hashedPassword,
-                ':encadreur_id' => $encadreurId,
-            ]);
+            $user = findUserBySupervisorId($pdo, $encadreurId);
+            $credentials = $user
+                ? resetSupervisorUserPassword($pdo, (int) $user['id'])
+                : createUserForSupervisor($pdo, $encadreur);
 
             $updateEncadreur = $pdo->prepare(
                 "UPDATE encadreurs
@@ -195,16 +234,16 @@ try {
 
             jsonResponse([
                 'success' => true,
-                'message' => 'Compte utilisateur cree et invitation envoyee',
+                'message' => 'Compte utilisateur pret et invitation envoyee',
                 'encadreur' => $updated ? normalizeSupervisor($updated) : null,
-                'credentials' => [
-                    'identifiant' => $login,
-                    'mot_de_passe_temporaire' => $temporaryPassword,
-                ],
+                'credentials' => $credentials,
             ]);
         }
 
         $payload = readSupervisorPayload();
+        $effectiveInvited = ($payload['account'] === 'avec') ? 1 : 0;
+
+        $pdo->beginTransaction();
 
         $insert = $pdo->prepare(
             "INSERT INTO encadreurs (nom, role, telephone, email, a_compte, invitation_envoyee)
@@ -217,8 +256,19 @@ try {
             ':telephone' => $payload['phone'],
             ':email' => $payload['email'],
             ':a_compte' => ($payload['account'] === 'avec') ? 1 : 0,
-            ':invitation_envoyee' => $payload['invited'],
+            ':invitation_envoyee' => $effectiveInvited,
         ]);
+
+        $createdId = (int) $pdo->lastInsertId();
+        $credentials = null;
+
+        if ($payload['account'] === 'avec') {
+            $credentials = createUserForSupervisor($pdo, [
+                'id' => $createdId,
+                'nom' => $payload['name'],
+                'email' => $payload['email'],
+            ]);
+        }
 
         $select = $pdo->prepare(
             "SELECT id, nom, role, telephone, email, a_compte, invitation_envoyee
@@ -226,13 +276,16 @@ try {
               WHERE id = :id
               LIMIT 1"
         );
-        $select->execute([':id' => (int) $pdo->lastInsertId()]);
+        $select->execute([':id' => $createdId]);
         $created = $select->fetch();
+
+        $pdo->commit();
 
         jsonResponse([
             'success' => true,
             'message' => 'Encadreur enregistré avec succès',
             'encadreur' => $created ? normalizeSupervisor($created) : null,
+            'credentials' => $credentials,
         ], 201);
     }
 
@@ -243,7 +296,7 @@ try {
 
     if ($method === 'PUT') {
         $existing = $pdo->prepare(
-            "SELECT invitation_envoyee
+            "SELECT id, nom, email, invitation_envoyee
                FROM encadreurs
               WHERE id = :id
               LIMIT 1"
@@ -256,6 +309,10 @@ try {
         }
 
         $payload = readSupervisorPayload();
+        $hadUser = findUserBySupervisorId($pdo, $id);
+        $credentials = null;
+
+        $pdo->beginTransaction();
 
         $update = $pdo->prepare(
             "UPDATE encadreurs
@@ -267,6 +324,9 @@ try {
                     invitation_envoyee = :invitation_envoyee
               WHERE id = :id"
         );
+        $nextInvited = ($payload['account'] === 'avec')
+            ? (($payload['invited'] || $hadUser) ? 1 : 0)
+            : 0;
         $update->execute([
             ':id' => $id,
             ':nom' => $payload['name'],
@@ -274,8 +334,40 @@ try {
             ':telephone' => $payload['phone'],
             ':email' => $payload['email'],
             ':a_compte' => ($payload['account'] === 'avec') ? 1 : 0,
-            ':invitation_envoyee' => $payload['invited'],
+            ':invitation_envoyee' => $nextInvited,
         ]);
+
+        if ($payload['account'] === 'avec' && !$hadUser) {
+            $credentials = createUserForSupervisor($pdo, [
+                'id' => $id,
+                'nom' => $payload['name'],
+                'email' => $payload['email'],
+            ]);
+
+            $markInvited = $pdo->prepare(
+                "UPDATE encadreurs
+                    SET invitation_envoyee = 1
+                  WHERE id = :id"
+            );
+            $markInvited->execute([':id' => $id]);
+        }
+
+        if ($payload['account'] === 'sans' && $hadUser) {
+            deleteSupervisorUser($pdo, $id);
+        }
+
+        if ($payload['account'] === 'avec' && $hadUser) {
+            $syncUser = $pdo->prepare(
+                "UPDATE utilisateurs
+                    SET nom = :nom,
+                        actif = 1
+                  WHERE encadreur_id = :encadreur_id"
+            );
+            $syncUser->execute([
+                ':nom' => $payload['name'],
+                ':encadreur_id' => $id,
+            ]);
+        }
 
         $select = $pdo->prepare(
             "SELECT id, nom, role, telephone, email, a_compte, invitation_envoyee
@@ -286,20 +378,29 @@ try {
         $select->execute([':id' => $id]);
         $updated = $select->fetch();
 
+        $pdo->commit();
+
         jsonResponse([
             'success' => true,
             'message' => 'Encadreur mis à jour avec succès',
             'encadreur' => $updated ? normalizeSupervisor($updated) : null,
+            'credentials' => $credentials,
         ]);
     }
 
     if ($method === 'DELETE') {
+        $pdo->beginTransaction();
+        deleteSupervisorUser($pdo, $id);
+
         $delete = $pdo->prepare("DELETE FROM encadreurs WHERE id = :id");
         $delete->execute([':id' => $id]);
 
         if ($delete->rowCount() === 0) {
+            $pdo->rollBack();
             jsonResponse(['success' => false, 'message' => 'Encadreur introuvable'], 404);
         }
+
+        $pdo->commit();
 
         jsonResponse([
             'success' => true,

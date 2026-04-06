@@ -76,6 +76,27 @@ function readAssignmentPayload(): array
     return $payload;
 }
 
+function fetchAssignmentById(PDO $pdo, int $id): ?array
+{
+    $select = $pdo->prepare(
+        "SELECT a.id, a.stagiaire_id, a.module_id, a.encadreur_id, a.date_affectation, a.statut,
+                s.nom AS stagiaire_nom,
+                m.titre AS module_titre,
+                e.nom AS encadreur_nom
+           FROM affectations a
+           INNER JOIN stagiaires s ON s.id = a.stagiaire_id
+           INNER JOIN modules m ON m.id = a.module_id
+           INNER JOIN encadreurs e ON e.id = a.encadreur_id
+          WHERE a.id = :id
+          LIMIT 1"
+    );
+    $select->execute([':id' => $id]);
+
+    $row = $select->fetch();
+
+    return $row ?: null;
+}
+
 try {
     $pdo = getDB();
     $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
@@ -116,23 +137,11 @@ try {
         ]);
 
         $id = (int) $pdo->lastInsertId();
-        $select = $pdo->prepare(
-            "SELECT a.id, a.stagiaire_id, a.module_id, a.encadreur_id, a.date_affectation, a.statut,
-                    s.nom AS stagiaire_nom,
-                    m.titre AS module_titre,
-                    e.nom AS encadreur_nom
-               FROM affectations a
-               INNER JOIN stagiaires s ON s.id = a.stagiaire_id
-               INNER JOIN modules m ON m.id = a.module_id
-               INNER JOIN encadreurs e ON e.id = a.encadreur_id
-              WHERE a.id = :id
-              LIMIT 1"
-        );
-        $select->execute([':id' => $id]);
+        $created = fetchAssignmentById($pdo, $id);
 
         jsonResponse([
             'success' => true,
-            'assignment' => normalizeAssignment($select->fetch() ?: []),
+            'assignment' => $created ? normalizeAssignment($created) : null,
         ], 201);
     }
 
@@ -142,22 +151,51 @@ try {
     }
 
     if ($method === 'PUT') {
-        $payload = readJsonBody();
-        $status = trim($payload['status'] ?? '');
-
-        if (!in_array($status, ['en-cours', 'terminee'], true)) {
-            jsonResponse(['success' => false, 'message' => 'Statut invalide'], 400);
-        }
-
-        $update = $pdo->prepare(
-            "UPDATE affectations
-                SET statut = :statut
-              WHERE id = :id"
+        $body = readJsonBody();
+        $hasFullPayload = isset(
+            $body['traineeId'],
+            $body['moduleId'],
+            $body['supervisorId'],
+            $body['date']
         );
-        $update->execute([
-            ':id' => $id,
-            ':statut' => $status,
-        ]);
+
+        if ($hasFullPayload) {
+            $payload = readAssignmentPayload();
+
+            $update = $pdo->prepare(
+                "UPDATE affectations
+                    SET stagiaire_id = :stagiaire_id,
+                        module_id = :module_id,
+                        encadreur_id = :encadreur_id,
+                        date_affectation = :date_affectation,
+                        statut = :statut
+                  WHERE id = :id"
+            );
+            $update->execute([
+                ':id' => $id,
+                ':stagiaire_id' => $payload['traineeId'],
+                ':module_id' => $payload['moduleId'],
+                ':encadreur_id' => $payload['supervisorId'],
+                ':date_affectation' => $payload['date'],
+                ':statut' => $payload['status'],
+            ]);
+        } else {
+            $status = trim($body['status'] ?? '');
+
+            if (!in_array($status, ['en-cours', 'terminee'], true)) {
+                jsonResponse(['success' => false, 'message' => 'Statut invalide'], 400);
+            }
+
+            $update = $pdo->prepare(
+                "UPDATE affectations
+                    SET statut = :statut
+                  WHERE id = :id"
+            );
+            $update->execute([
+                ':id' => $id,
+                ':statut' => $status,
+            ]);
+        }
 
         if ($update->rowCount() === 0) {
             $exists = $pdo->prepare("SELECT id FROM affectations WHERE id = :id LIMIT 1");
@@ -167,9 +205,12 @@ try {
             }
         }
 
+        $updated = fetchAssignmentById($pdo, $id);
+
         jsonResponse([
             'success' => true,
             'message' => 'Affectation mise à jour',
+            'assignment' => $updated ? normalizeAssignment($updated) : null,
         ]);
     }
 

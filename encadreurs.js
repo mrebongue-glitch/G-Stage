@@ -113,6 +113,16 @@ function updateSupervisorInState(updatedRow) {
   supervisors = supervisors.map((row) => (row.id === updatedRow.id ? updatedRow : row));
 }
 
+function showCredentialsAlert(name, credentials) {
+  if (!credentials?.identifiant || !credentials?.mot_de_passe_temporaire) {
+    return;
+  }
+
+  window.alert(
+    `Compte pret pour ${name}\nIdentifiant : ${credentials.identifiant}\nMot de passe temporaire : ${credentials.mot_de_passe_temporaire}`
+  );
+}
+
 function openModal(modal) {
   modal.classList.remove("hidden");
 }
@@ -193,6 +203,7 @@ async function submitEdit(evt) {
 
     closeModal(editModal);
     rerender();
+    showCredentialsAlert(row.name, data.credentials);
   } catch (error) {
     window.alert(error.message || "Impossible de modifier l'encadreur.");
   }
@@ -245,6 +256,7 @@ async function toggleAccount(id) {
     }
 
     rerender();
+    showCredentialsAlert(row.name, data.credentials);
   } catch (error) {
     window.alert(error.message || "Impossible de mettre a jour le type de compte.");
   }
@@ -359,6 +371,7 @@ async function submitCreateForm(evt) {
 
     rerender();
     showCreateMessage("Encadreur enregistre avec succes.", "success");
+    showCredentialsAlert(payload.name, data.credentials);
 
     window.setTimeout(() => {
       resetCreateForm();

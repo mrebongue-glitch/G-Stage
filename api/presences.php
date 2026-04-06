@@ -4,7 +4,7 @@
 require_once __DIR__ . '/bootstrap.php';
 require_once __DIR__ . '/db.php';
 
-handlePreflight(['GET', 'POST']);
+handlePreflight(['GET', 'POST', 'DELETE']);
 requireAuthentication();
 
 function normalizePresenceRow(array $row): array
@@ -67,6 +67,44 @@ try {
             'success' => true,
             'date' => $date,
             'presences' => array_map('normalizePresenceRow', $stmt->fetchAll()),
+        ]);
+    }
+
+    if ($method === 'DELETE') {
+        $stagiaireId = (int) ($_GET['stagiaireId'] ?? 0);
+        $date = trim($_GET['date'] ?? '');
+
+        if ($stagiaireId <= 0 || $date === '') {
+            jsonResponse(['success' => false, 'message' => 'Stagiaire et date requis'], 400);
+        }
+
+        $exists = $pdo->prepare("SELECT id FROM stagiaires WHERE id = :id LIMIT 1");
+        $exists->execute([':id' => $stagiaireId]);
+        if (!$exists->fetch()) {
+            jsonResponse(['success' => false, 'message' => 'Stagiaire introuvable'], 404);
+        }
+
+        if (!$isAdmin && !canAccessSupervisorScope($pdo, $supervisorId, $stagiaireId)) {
+            jsonResponse(['success' => false, 'message' => 'Accès refusé à ce stagiaire'], 403);
+        }
+
+        $delete = $pdo->prepare(
+            "DELETE FROM presences
+              WHERE stagiaire_id = :stagiaire_id
+                AND date_presence = :date_presence"
+        );
+        $delete->execute([
+            ':stagiaire_id' => $stagiaireId,
+            ':date_presence' => $date,
+        ]);
+
+        if ($delete->rowCount() === 0) {
+            jsonResponse(['success' => false, 'message' => 'Présence introuvable pour cette date'], 404);
+        }
+
+        jsonResponse([
+            'success' => true,
+            'message' => 'Présence supprimée avec succès',
         ]);
     }
 

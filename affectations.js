@@ -11,6 +11,8 @@ const tableBody = document.getElementById("assignTableBody");
 const assignModal = document.getElementById("assignModal");
 const assignForm = document.getElementById("assignForm");
 const newAssignBtn = document.getElementById("newAssignBtn");
+const modalTitle = assignModal.querySelector(".modal-head h3");
+const assignIdField = document.getElementById("assignId");
 const traineeSelect = document.getElementById("fStagiaire");
 const moduleSelect = document.getElementById("fModule");
 const supervisorSelect = document.getElementById("fEncadreur");
@@ -79,6 +81,7 @@ function renderTable() {
         <td class="actions-cell">
           <button class="menu-btn" data-action="toggle-menu">...</button>
           <div class="row-actions" role="menu">
+            <button data-action="edit">Modifier</button>
             <button data-action="mark-done">Marquer termine</button>
             <button data-action="delete" class="danger">Supprimer</button>
           </div>
@@ -107,6 +110,10 @@ function populateFormOptions() {
   populateSelect(traineeSelect, assignmentOptions.trainees, "Choisir un stagiaire");
   populateSelect(moduleSelect, assignmentOptions.modules, "Choisir un module", "titre");
   populateSelect(supervisorSelect, assignmentOptions.supervisors, "Choisir un encadreur");
+}
+
+function getAssignmentById(id) {
+  return assignments.find((row) => row.id === id);
 }
 
 async function loadAssignments() {
@@ -198,11 +205,24 @@ async function removeAssignment(id) {
   }
 }
 
-function openModal() {
+function openModal(editing = false, assignment = null) {
   assignForm.reset();
   populateFormOptions();
-  document.getElementById("fDate").value = new Date().toISOString().slice(0, 10);
-  document.getElementById("fStatus").value = "en-cours";
+  modalTitle.textContent = editing ? "Modifier l'affectation" : "Nouvelle affectation";
+
+  if (editing && assignment) {
+    assignIdField.value = assignment.id;
+    traineeSelect.value = String(assignment.traineeId);
+    moduleSelect.value = String(assignment.moduleId);
+    supervisorSelect.value = String(assignment.supervisorId);
+    document.getElementById("fDate").value = assignment.date;
+    document.getElementById("fStatus").value = assignment.status;
+  } else {
+    assignIdField.value = "";
+    document.getElementById("fDate").value = new Date().toISOString().slice(0, 10);
+    document.getElementById("fStatus").value = "en-cours";
+  }
+
   assignModal.classList.remove("hidden");
 }
 
@@ -212,6 +232,7 @@ function closeModal() {
 
 async function addAssignment(evt) {
   evt.preventDefault();
+  const id = Number(assignIdField.value);
 
   const payload = {
     traineeId: Number(traineeSelect.value),
@@ -226,8 +247,8 @@ async function addAssignment(evt) {
   }
 
   try {
-    const res = await fetch(apiUrl, {
-      method: "POST",
+    const res = await fetch(id ? `${apiUrl}?id=${id}` : apiUrl, {
+      method: id ? "PUT" : "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "same-origin",
       body: JSON.stringify(payload)
@@ -244,7 +265,9 @@ async function addAssignment(evt) {
       throw new Error(data.message || `HTTP ${res.status}`);
     }
 
-    if (data.assignment) {
+    if (id && data.assignment) {
+      assignments = assignments.map((row) => (row.id === id ? data.assignment : row));
+    } else if (data.assignment) {
       assignments.unshift(data.assignment);
     }
 
@@ -276,6 +299,11 @@ function handleTableClick(evt) {
   }
 
   closeAllRowMenus();
+
+  if (action === "edit") {
+    const row = getAssignmentById(id);
+    if (row) openModal(true, row);
+  }
 
   if (action === "mark-done") markDone(id);
   if (action === "delete") removeAssignment(id);

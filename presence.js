@@ -80,7 +80,7 @@ function renderTable() {
   if (!trainees.length) {
     tableBody.innerHTML = `
       <tr>
-        <td class="empty-row" colspan="4">Aucun stagiaire actif disponible</td>
+        <td class="empty-row" colspan="5">Aucun stagiaire actif disponible</td>
       </tr>
     `;
     return;
@@ -109,6 +109,9 @@ function renderTable() {
         </td>
         <td>
           <input class="motif-input" data-field="reason" type="text" placeholder="Motif (optionnel)" value="${escapeHtml(t.reason)}" />
+        </td>
+        <td>
+          ${t.status ? '<button class="btn btn-light clear-btn" data-action="clear">Effacer</button>' : ""}
         </td>
       </tr>
     `
@@ -156,9 +159,9 @@ async function loadPresences() {
   if (!dateInput.value) return;
 
   tableBody.innerHTML = `
-    <tr>
-      <td class="empty-row" colspan="4">Chargement des presences...</td>
-    </tr>
+      <tr>
+        <td class="empty-row" colspan="5">Chargement des presences...</td>
+      </tr>
   `;
 
   try {
@@ -184,10 +187,40 @@ async function loadPresences() {
     console.error(error);
     tableBody.innerHTML = `
       <tr>
-        <td class="empty-row" colspan="4">${escapeHtml(error.message || "Impossible de charger les presences")}</td>
+        <td class="empty-row" colspan="5">${escapeHtml(error.message || "Impossible de charger les presences")}</td>
       </tr>
     `;
     statsGrid.innerHTML = "";
+  }
+}
+
+async function clearPresence(id) {
+  const row = trainees.find((t) => t.id === id);
+  if (!row || !row.status) return;
+
+  try {
+    const res = await fetch(`${apiUrl}?stagiaireId=${id}&date=${encodeURIComponent(dateInput.value)}`, {
+      method: "DELETE",
+      credentials: "same-origin"
+    });
+
+    if (res.status === 401) {
+      sessionStorage.removeItem("user");
+      window.location.replace("login.html");
+      return;
+    }
+
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      throw new Error(data.message || `HTTP ${res.status}`);
+    }
+
+    row.status = "";
+    row.reason = "";
+    renderTable();
+    renderStats();
+  } catch (error) {
+    window.alert(error.message);
   }
 }
 
@@ -263,6 +296,16 @@ function bindEvents() {
         window.alert(error.message);
       }
     }
+  });
+
+  tableBody.addEventListener("click", async (evt) => {
+    const actionButton = evt.target.closest("[data-action='clear']");
+    if (!actionButton) return;
+
+    const tr = evt.target.closest("tr[data-id]");
+    if (!tr) return;
+
+    await clearPresence(Number(tr.dataset.id));
   });
 }
 
